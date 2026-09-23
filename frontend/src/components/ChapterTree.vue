@@ -4,14 +4,18 @@
     :data="treeData"
     node-key="key"
     default-expand-all
-    draggable
-    :allow-drop="allowDrop"
+    :draggable="false"
     @node-click="handleClick"
   >
     <template #default="{ data }">
-      <span class="tree-node">
+      <span class="tree-node" :class="{ 'is-locked': data.lesson?.locked }">
         <span>{{ data.label }}</span>
-        <el-tag v-if="data.lesson?.is_free" size="small">试看</el-tag>
+        <span class="tags">
+          <el-tag v-if="data.lesson?.is_free && !enrolled" size="small" type="success">试看</el-tag>
+          <el-tag v-if="data.lesson?.locked" size="small" type="info">
+            <el-icon class="lock-icon"><Lock /></el-icon>锁定
+          </el-tag>
+        </span>
       </span>
     </template>
   </el-tree>
@@ -19,11 +23,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Lock } from '@element-plus/icons-vue'
 import type { Chapter } from '@/types/chapter'
 import type { Lesson } from '@/types/lesson'
 
-const props = defineProps<{ chapters: Chapter[] }>()
-const emit = defineEmits<{ selectLesson: [lesson: Lesson] }>()
+const props = withDefaults(defineProps<{ chapters: Chapter[]; enrolled?: boolean }>(), { enrolled: false })
+const emit = defineEmits<{ selectLesson: [lesson: Lesson]; lockedLesson: [] }>()
 
 const treeData = computed(() =>
   props.chapters.map((chapter) => ({
@@ -37,12 +42,13 @@ const treeData = computed(() =>
   }))
 )
 
-function allowDrop() {
-  return true
-}
-
 function handleClick(data: { lesson?: Lesson }) {
-  if (data.lesson) emit('selectLesson', data.lesson)
+  if (!data.lesson) return
+  if (data.lesson.locked) {
+    emit('lockedLesson')
+    return
+  }
+  emit('selectLesson', data.lesson)
 }
 </script>
 
@@ -58,5 +64,19 @@ function handleClick(data: { lesson?: Lesson }) {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+
+.tags {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.is-locked {
+  color: #9ca3af;
+}
+
+.lock-icon {
+  vertical-align: middle;
 }
 </style>

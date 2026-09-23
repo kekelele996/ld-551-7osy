@@ -13,14 +13,22 @@
         </div>
         <strong class="price">{{ formatMoney(course.price) }}</strong>
         <div class="actions">
-          <el-button type="primary" @click="buy">立即购买</el-button>
-          <el-button @click="$router.push(`/learn/${course.id}`)">继续学习</el-button>
+          <el-button v-if="isEnrolled" type="primary" @click="goLearn">继续学习</el-button>
+          <template v-else>
+            <el-button v-if="isFree" type="primary" :loading="enrolling" @click="enrollFree">免费注册</el-button>
+            <el-button v-else type="primary" :loading="paying" @click="buy">立即购买</el-button>
+          </template>
         </div>
       </div>
     </div>
     <el-tabs>
       <el-tab-pane label="大纲">
-        <ChapterTree :chapters="chapters" />
+        <ChapterTree
+          :chapters="chapters"
+          :enrolled="isEnrolled"
+          @select-lesson="previewLesson"
+          @locked-lesson="lockedTip"
+        />
       </el-tab-pane>
       <el-tab-pane label="介绍">
         <article class="rich-text">{{ course.description }}</article>
@@ -33,32 +41,64 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ChapterTree from '@/components/ChapterTree.vue'
 import { useCourseStore } from '@/stores/courseStore'
+import { useEnrollmentStore } from '@/stores/enrollmentStore'
 import { useOrderStore } from '@/stores/orderStore'
+import type { Lesson } from '@/types/lesson'
 import { formatMinutes, formatMoney } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
 const courseStore = useCourseStore()
+const enrollmentStore = useEnrollmentStore()
 const orderStore = useOrderStore()
 const course = computed(() => courseStore.currentCourse)
 const chapters = computed(() => courseStore.chapters)
+const isEnrolled = computed(() => Boolean(course.value?.enrolled))
+const isFree = computed(() => Number(course.value?.price ?? 0) === 0)
+const enrolling = ref(false)
+const paying = ref(false)
+
+async function enrollFree() {
+  if (!course.value) return
+  enrolling.value = true
+  try {
+    await enrollmentStore.enrollFree(course.value.id)
+    ElMessage.success('开通成功，开始学习吧')
+    goLearn()
+  } finally {
+    enrolling.value = false
+  }
+}
 
 async function buy() {
   if (!course.value) return
-  if (Number(course.value.price) === 0) {
-    ElMessage.success('免费课程可直接进入学习')
-    router.push(`/learn/${course.value.id}`)
-    return
+  paying.value = true
+  try {
+    const order = await orderStore.createOrder(course.value.id)
+    await orderStore.payOrder(order.id)
+    ElMessage.success('支付成功，已开通课程')
+    goLearn()
+  } finally {
+    paying.value = false
   }
-  const order = await orderStore.createOrder(course.value.id)
-  await orderStore.payOrder(order.id)
-  ElMessage.success('支付成功，已注册课程')
-  router.push(`/learn/${course.value.id}`)
+}
+
+function goLearn() {
+  if (course.value) router.push(`/learn/${course.value.id}`)
+}
+
+function previewLesson(lesson: Lesson) {
+  if (!course.value) return
+  router.push({ path: `/learn/${course.value.id}`, query: { lesson: String(lesson.id) } })
+}
+
+function lockedTip() {
+  ElMessage.warning('该课时已锁定，开通课程后即可学习')
 }
 
 onMounted(() => courseStore.fetchCourse(Number(route.params.id)))

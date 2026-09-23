@@ -7,7 +7,9 @@ from app.models.chapter import Chapter
 from app.models.course import Course
 from app.models.lesson import Lesson
 from app.models.user import User
-from app.schemas.course import CourseCreate, CourseUpdate
+from app.schemas.chapter import ChapterResponse
+from app.schemas.course import CourseCreate, CourseDetailResponse, CourseUpdate
+from app.services.access_service import AccessService
 from app.services.audit_service import AuditService
 
 
@@ -51,6 +53,26 @@ class CourseService:
         if not course:
             raise CourseNotFoundException()
         return course
+
+    @staticmethod
+    def get_course_detail(db: Session, course_id: int, user: User | None = None) -> CourseDetailResponse:
+        """课程详情：未开通学员只能看到试看课时，正文不下发。"""
+        course = CourseService.get_course(db, course_id)
+        if not AccessService.can_view_course(db, user, course):
+            raise CourseNotFoundException("课程已下架")
+        chapters = AccessService.serialize_chapters(db, user, course)
+        enrolled = AccessService.is_enrolled(db, user, course.id)
+        return CourseDetailResponse.model_validate(course).model_copy(
+            update={"chapters": chapters, "enrolled": enrolled}
+        )
+
+    @staticmethod
+    def get_course_chapters(db: Session, course_id: int, user: User | None = None) -> list[ChapterResponse]:
+        """章节目录：未开通学员的非试看课时返回锁定状态且不含正文。"""
+        course = CourseService.get_course(db, course_id)
+        if not AccessService.can_view_course(db, user, course):
+            raise CourseNotFoundException("课程已下架")
+        return AccessService.serialize_chapters(db, user, course)
 
     @staticmethod
     def create_course(db: Session, instructor: User, payload: CourseCreate, ip_address: str | None = None) -> Course:

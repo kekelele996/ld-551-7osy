@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.constants.enums import CourseStatus, OrderStatus
@@ -21,7 +22,9 @@ class PaymentService:
         if not course or course.status != CourseStatus.PUBLISHED:
             raise CourseNotFoundException("课程不存在或未上架")
         if db.query(Enrollment).filter_by(user_id=user.id, course_id=course_id).first():
-            raise PaymentFailedException("已注册该课程")
+            raise PaymentFailedException("已开通该课程，无需重复购买")
+        if course.price <= 0:
+            raise PaymentFailedException("免费课程可直接开通，无需下单支付")
         order = Order(
             order_no=f"EF{datetime.now(UTC):%Y%m%d%H%M%S}{uuid4().hex[:8].upper()}",
             user_id=user.id,
@@ -50,6 +53,18 @@ class PaymentService:
             order.status = OrderStatus.CANCELLED
             db.commit()
             raise InvalidOrderTransitionException("订单已超时取消")
+        # 并发重复回调时开通关系的唯一约束可能先命中：回滚后按幂等订单重读重试
+        try:
+            return PaymentService._mark_paid_and_enroll(db, user, order, payment_info, ip_address)
+        except IntegrityError:
+            db.rollback()
+            order = db.get(Order, order_id)
+            if order and order.status == OrderStatus.PAID:
+                return order
+            raise
+
+    @staticmethod
+    def _mark_paid_and_enroll(db: Session, user: User, order: Order, payment_info: dict, ip_address: str | None) -> Order:
         order.status = OrderStatus.PAID
         order.payment_method = payment_info.get("payment_method", order.payment_method)
         order.paid_at = datetime.now(UTC)

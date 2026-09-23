@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, get_current_user_optional, require_role
 from app.constants.enums import CourseStatus, UserRole
 from app.core.database import get_db
 from app.models.user import User
@@ -28,13 +28,13 @@ def list_courses(
 
 
 @router.get("/{course_id}", response_model=CourseDetailResponse)
-def get_course(course_id: int, db: Session = Depends(get_db)):
-    return CourseService.get_course(db, course_id)
+def get_course(course_id: int, db: Session = Depends(get_db), user: User | None = Depends(get_current_user_optional)):
+    return CourseService.get_course_detail(db, course_id, user)
 
 
 @router.get("/{course_id}/chapters", response_model=list[ChapterResponse])
-def get_chapters(course_id: int, db: Session = Depends(get_db)):
-    return CourseService.get_course(db, course_id).chapters
+def get_chapters(course_id: int, db: Session = Depends(get_db), user: User | None = Depends(get_current_user_optional)):
+    return CourseService.get_course_chapters(db, course_id, user)
 
 
 @router.post("", response_model=CourseResponse)

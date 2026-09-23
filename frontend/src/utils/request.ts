@@ -26,9 +26,9 @@ request.interceptors.response.use(
       clearToken()
       router.push('/login')
     } else if (status === 403) {
-      ElMessage.error('无权限访问')
+      ElMessage.error(error.response.data?.message || '无权限访问')
     } else if (status === 404) {
-      ElMessage.error('资源不存在')
+      ElMessage.error(error.response.data?.message || '资源不存在')
     } else if (status >= 500) {
       ElMessage.error('服务器错误，请稍后重试')
     } else {

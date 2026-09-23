@@ -15,6 +15,12 @@ def list_enrollments(user: User = Depends(get_current_user), db: Session = Depen
     return EnrollmentService.list_user_enrollments(db, user)
 
 
+@router.post("/courses/{course_id}", response_model=EnrollmentResponse)
+def enroll_free_course(course_id: int, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """免费课程在详情页直接建立学习关系；重复开通幂等返回。"""
+    return EnrollmentService.enroll_free_course(db, user, course_id, request.client.host if request.client else None)
+
+
 @router.get("/recent", response_model=list[EnrollmentResponse])
 def recent(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return EnrollmentService.list_user_enrollments(db, user)[:5]

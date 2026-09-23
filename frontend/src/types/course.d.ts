@@ -20,6 +20,7 @@ export interface Course {
   created_at: string
   updated_at: string
   chapters?: Chapter[]
+  enrolled?: boolean
 }
 
 export interface CourseQuery {

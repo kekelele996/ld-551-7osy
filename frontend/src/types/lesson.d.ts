@@ -9,4 +9,5 @@ export interface Lesson {
   duration: number
   is_free: boolean
   sort_order: number
+  locked?: boolean
 }
