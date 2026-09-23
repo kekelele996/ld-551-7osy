@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, get_optional_user, require_role
 from app.constants.enums import CourseStatus, UserRole
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.chapter import ChapterResponse
 from app.schemas.common import PageResponse
 from app.schemas.course import CourseCreate, CourseDetailResponse, CourseResponse, CourseStatusUpdate, CourseUpdate
+from app.schemas.enrollment import EnrollmentResponse
 from app.services.course_service import CourseService
+from app.services.enrollment_service import EnrollmentService
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
@@ -28,13 +30,22 @@ def list_courses(
 
 
 @router.get("/{course_id}", response_model=CourseDetailResponse)
-def get_course(course_id: int, db: Session = Depends(get_db)):
-    return CourseService.get_course(db, course_id)
+def get_course(course_id: int, db: Session = Depends(get_db), user: User | None = Depends(get_optional_user)):
+    course, enrolled = CourseService.get_course_for_viewer(db, course_id, user)
+    course.enrolled = enrolled
+    return course
 
 
 @router.get("/{course_id}/chapters", response_model=list[ChapterResponse])
-def get_chapters(course_id: int, db: Session = Depends(get_db)):
-    return CourseService.get_course(db, course_id).chapters
+def get_chapters(course_id: int, db: Session = Depends(get_db), user: User | None = Depends(get_optional_user)):
+    course, _ = CourseService.get_course_for_viewer(db, course_id, user)
+    return course.chapters
+
+
+@router.post("/{course_id}/enroll", response_model=EnrollmentResponse)
+def enroll_free_course(course_id: int, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # 免费课程在详情页直接建立学习关系；付费课程需走支付流程
+    return EnrollmentService.enroll_free_course(db, user, course_id, request.client.host if request.client else None)
 
 
 @router.post("", response_model=CourseResponse)

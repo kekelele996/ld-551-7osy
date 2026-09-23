@@ -29,6 +29,21 @@ def get_current_user(
     return user
 
 
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """公开接口使用：带了合法 token 就解析用户，没带也放行。"""
+    if not credentials:
+        return None
+    try:
+        payload = decode_access_token(credentials.credentials)
+        user_id = int(payload["sub"])
+    except (ValueError, KeyError):
+        return None
+    return db.get(User, user_id)
+
+
 def require_role(*roles: UserRole) -> Callable:
     def dependency(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:

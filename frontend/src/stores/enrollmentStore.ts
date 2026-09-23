@@ -15,11 +15,16 @@ export const useEnrollmentStore = defineStore('enrollment', () => {
     progress.value = await request.get<unknown, ProgressSummary>(`/enrollments/${courseId}/progress`)
   }
 
+  async function enrollFree(courseId: number) {
+    const enrollment = await request.post<unknown, Enrollment>(`/courses/${courseId}/enroll`)
+    return enrollment
+  }
+
   async function completeLesson(lessonId: number, score?: number) {
     const enrollment = await request.post<unknown, Enrollment>('/enrollments/progress/complete', { lesson_id: lessonId, score })
     await fetchProgress(enrollment.course_id)
     return enrollment
   }
 
-  return { enrollments, progress, fetchEnrollments, fetchProgress, completeLesson }
+  return { enrollments, progress, fetchEnrollments, fetchProgress, enrollFree, completeLesson }
 })

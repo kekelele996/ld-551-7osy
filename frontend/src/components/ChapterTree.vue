@@ -4,14 +4,16 @@
     :data="treeData"
     node-key="key"
     default-expand-all
-    draggable
-    :allow-drop="allowDrop"
+    :expand-on-click-node="false"
     @node-click="handleClick"
   >
     <template #default="{ data }">
-      <span class="tree-node">
-        <span>{{ data.label }}</span>
-        <el-tag v-if="data.lesson?.is_free" size="small">试看</el-tag>
+      <span class="tree-node" :class="{ 'is-locked': data.lesson?.locked }">
+        <span class="tree-label">
+          <el-icon v-if="data.lesson?.locked" class="lock-icon" title="未开通，课时已锁定"><Lock /></el-icon>
+          <span>{{ data.label }}</span>
+        </span>
+        <el-tag v-if="data.lesson?.is_free" size="small" type="success">试看</el-tag>
       </span>
     </template>
   </el-tree>
@@ -19,6 +21,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Lock } from '@element-plus/icons-vue'
 import type { Chapter } from '@/types/chapter'
 import type { Lesson } from '@/types/lesson'
 
@@ -37,12 +40,9 @@ const treeData = computed(() =>
   }))
 )
 
-function allowDrop() {
-  return true
-}
-
 function handleClick(data: { lesson?: Lesson }) {
-  if (data.lesson) emit('selectLesson', data.lesson)
+  // 未开通的付费课时不允许打开
+  if (data.lesson && !data.lesson.locked) emit('selectLesson', data.lesson)
 }
 </script>
 
@@ -57,6 +57,22 @@ function handleClick(data: { lesson?: Lesson }) {
   width: 100%;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 8px;
+}
+
+.tree-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.is-locked {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.lock-icon {
+  color: #9ca3af;
 }
 </style>

@@ -8,5 +8,6 @@ export interface Lesson {
   content: string
   duration: number
   is_free: boolean
+  locked: boolean
   sort_order: number
 }

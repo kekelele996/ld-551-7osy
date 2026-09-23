@@ -20,6 +20,8 @@ export interface Course {
   created_at: string
   updated_at: string
   chapters?: Chapter[]
+  /** 当前登录学员是否已开通（匿名访问为 false） */
+  enrolled?: boolean
 }
 
 export interface CourseQuery {

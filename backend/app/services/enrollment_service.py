@@ -1,8 +1,11 @@
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants.enums import CourseStatus, UserRole
 from app.exceptions.course import CourseNotFoundException
+from app.exceptions.payment import PaymentFailedException
 from app.models.chapter import Chapter
 from app.models.course import Course
 from app.models.enrollment import Enrollment
@@ -14,15 +17,51 @@ from app.services.audit_service import AuditService
 
 class EnrollmentService:
     @staticmethod
+    def is_enrolled(db: Session, user_id: int, course_id: int) -> bool:
+        return db.query(Enrollment.id).filter_by(user_id=user_id, course_id=course_id).first() is not None
+
+    @staticmethod
+    def can_access_full_content(db: Session, user: User | None, course: Course) -> bool:
+        """已开通学员、课程讲师、管理员可看全部课时正文（课程下架后也不例外）。"""
+        if user is None:
+            return False
+        if user.role == UserRole.ADMIN or course.instructor_id == user.id:
+            return True
+        return EnrollmentService.is_enrolled(db, user.id, course.id)
+
+    @staticmethod
     def enroll(db: Session, user: User, course: Course, ip_address: str | None = None) -> Enrollment:
         existing = db.query(Enrollment).filter_by(user_id=user.id, course_id=course.id).first()
         if existing:
             return existing
         enrollment = Enrollment(user_id=user.id, course_id=course.id)
-        db.add(enrollment)
+        try:
+            # 用保存点包住插入：并发下唯一约束冲突时只回滚插入，不影响外层事务（如支付状态更新）
+            with db.begin_nested():
+                db.add(enrollment)
+                db.flush()
+        except IntegrityError:
+            # 重复开通直接复用已有学习关系，学员数保持不变
+            return db.query(Enrollment).filter_by(user_id=user.id, course_id=course.id).one()
+        # 插入成功（保存点已释放）后再累加学员数，随外层事务一起提交
         course.student_count += 1
-        db.flush()
         AuditService.record(db, user_id=user.id, action="CREATE", entity="Enrollment", entity_id=str(enrollment.id), after_data={"course_id": course.id}, ip_address=ip_address)
+        return enrollment
+
+    @staticmethod
+    def enroll_free_course(db: Session, user: User, course_id: int, ip_address: str | None = None) -> Enrollment:
+        """免费课程在详情页直接开通；已开通时幂等返回。"""
+        course = db.get(Course, course_id)
+        if not course or course.status != CourseStatus.PUBLISHED:
+            raise CourseNotFoundException("课程不存在或未上架")
+        existing = db.query(Enrollment).filter_by(user_id=user.id, course_id=course_id).first()
+        if existing:
+            return existing
+        if course.price != 0:
+            raise PaymentFailedException("付费课程需完成支付后开通")
+        enrollment = EnrollmentService.enroll(db, user, course, ip_address=ip_address)
+        db.commit()
+        db.refresh(enrollment)
         return enrollment
 
     @staticmethod

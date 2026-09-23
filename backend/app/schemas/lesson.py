@@ -27,5 +27,6 @@ class LessonUpdate(BaseModel):
 class LessonResponse(LessonBase):
     id: int
     chapter_id: int
+    locked: bool = False
 
     model_config = {"from_attributes": True}

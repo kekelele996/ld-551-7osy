@@ -51,3 +51,4 @@ class CourseResponse(CourseBase):
 
 class CourseDetailResponse(CourseResponse):
     chapters: list[ChapterResponse] = []
+    enrolled: bool = False

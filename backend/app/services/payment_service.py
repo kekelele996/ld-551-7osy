@@ -20,6 +20,8 @@ class PaymentService:
         course = db.get(Course, course_id)
         if not course or course.status != CourseStatus.PUBLISHED:
             raise CourseNotFoundException("课程不存在或未上架")
+        if course.price == 0:
+            raise PaymentFailedException("免费课程可直接注册，无需下单")
         if db.query(Enrollment).filter_by(user_id=user.id, course_id=course_id).first():
             raise PaymentFailedException("已注册该课程")
         order = Order(

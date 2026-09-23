@@ -13,8 +13,13 @@
         </div>
         <strong class="price">{{ formatMoney(course.price) }}</strong>
         <div class="actions">
-          <el-button type="primary" @click="buy">立即购买</el-button>
-          <el-button @click="$router.push(`/learn/${course.id}`)">继续学习</el-button>
+          <el-button v-if="course.enrolled" type="primary" @click="$router.push(`/learn/${course.id}`)">继续学习</el-button>
+          <el-button v-else-if="Number(course.price) === 0" type="primary" :loading="enrolling" @click="enrollFree">
+            免费注册
+          </el-button>
+          <el-button v-else type="primary" :loading="orderStore.currentOrder?.status === 'PENDING'" @click="buy">
+            立即购买
+          </el-button>
         </div>
       </div>
     </div>
@@ -33,35 +38,54 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ChapterTree from '@/components/ChapterTree.vue'
 import { useCourseStore } from '@/stores/courseStore'
+import { useEnrollmentStore } from '@/stores/enrollmentStore'
 import { useOrderStore } from '@/stores/orderStore'
 import { formatMinutes, formatMoney } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
 const courseStore = useCourseStore()
+const enrollmentStore = useEnrollmentStore()
 const orderStore = useOrderStore()
 const course = computed(() => courseStore.currentCourse)
 const chapters = computed(() => courseStore.chapters)
+const enrolling = ref(false)
+
+async function refreshCourse() {
+  await courseStore.fetchCourse(Number(route.params.id))
+}
+
+async function enrollFree() {
+  if (!course.value) return
+  enrolling.value = true
+  try {
+    await enrollmentStore.enrollFree(course.value.id)
+    ElMessage.success('注册成功，开始学习吧')
+    await refreshCourse()
+    router.push(`/learn/${course.value.id}`)
+  } finally {
+    enrolling.value = false
+  }
+}
 
 async function buy() {
   if (!course.value) return
-  if (Number(course.value.price) === 0) {
-    ElMessage.success('免费课程可直接进入学习')
-    router.push(`/learn/${course.value.id}`)
-    return
-  }
+  // 付费课程：下单并支付成功后才开通
   const order = await orderStore.createOrder(course.value.id)
-  await orderStore.payOrder(order.id)
-  ElMessage.success('支付成功，已注册课程')
-  router.push(`/learn/${course.value.id}`)
+  const paid = await orderStore.payOrder(order.id)
+  if (paid.status === 'PAID') {
+    ElMessage.success('支付成功，已开通课程')
+    await refreshCourse()
+    router.push(`/learn/${course.value.id}`)
+  }
 }
 
-onMounted(() => courseStore.fetchCourse(Number(route.params.id)))
+onMounted(refreshCourse)
 </script>
 
 <style scoped>

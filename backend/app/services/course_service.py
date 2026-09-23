@@ -9,9 +9,30 @@ from app.models.lesson import Lesson
 from app.models.user import User
 from app.schemas.course import CourseCreate, CourseUpdate
 from app.services.audit_service import AuditService
+from app.services.enrollment_service import EnrollmentService
 
 
 class CourseService:
+    @staticmethod
+    def _mask_locked_lessons(course: Course) -> None:
+        """未开通访问者：付费课时正文清空并标记锁定，仅保留 is_free 试看课时正文。"""
+        for chapter in course.chapters:
+            for lesson in chapter.lessons:
+                lesson.locked = not lesson.is_free
+                if lesson.locked:
+                    lesson.content = ""
+
+    @staticmethod
+    def get_course_for_viewer(db: Session, course_id: int, user: User | None) -> tuple[Course, bool]:
+        course = CourseService.get_course(db, course_id)
+        has_full_access = EnrollmentService.can_access_full_content(db, user, course)
+        # 草稿/下架课程只对已开通学员、讲师和管理员可见
+        if course.status != CourseStatus.PUBLISHED and not has_full_access:
+            raise CourseNotFoundException()
+        if not has_full_access:
+            CourseService._mask_locked_lessons(course)
+        return course, has_full_access
+
     @staticmethod
     def list_published(
         db: Session,
